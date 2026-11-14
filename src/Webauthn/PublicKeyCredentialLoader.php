@@ -18,8 +18,8 @@ use Webauthn\PublicKeyCredential;
 
 /**
  * Loads the browser response (`PublicKeyCredential`) with the webauthn-lib 5 serializer. Before loading, it makes the
- * base64 of `clientDataJSON` and `authenticatorData` compliant (some browsers send it with padding or in base64 instead
- * of base64url).
+ * base64 of `clientDataJSON`, `authenticatorData`, `signature` and `userHandle` compliant (some clients send it with
+ * padding or in base64 instead of the base64url that webauthn-lib 5 requires).
  */
 class PublicKeyCredentialLoader
 {
@@ -36,19 +36,11 @@ class PublicKeyCredentialLoader
      */
     public function loadArray(array $json): PublicKeyCredential
     {
-        if (
-            isset($json['response']['clientDataJSON'])
-            && is_string($json['response']['clientDataJSON'])
-        ) {
-            $json['response']['clientDataJSON'] =
-                Base64Utility::complyEncodedNoPadding($json['response']['clientDataJSON']);
-        }
-        if (
-            isset($json['response']['authenticatorData'])
-            && is_string($json['response']['authenticatorData'])
-        ) {
-            $json['response']['authenticatorData'] =
-                Base64Utility::complyEncodedNoPadding($json['response']['authenticatorData']);
+        // webauthn-lib 5 only accepts base64url for these members; some clients send standard base64.
+        foreach (['clientDataJSON', 'authenticatorData', 'signature', 'userHandle'] as $member) {
+            if (isset($json['response'][$member]) && is_string($json['response'][$member])) {
+                $json['response'][$member] = Base64Utility::complyEncodedNoPadding($json['response'][$member]);
+            }
         }
 
         return $this->serializer->deserialize(
