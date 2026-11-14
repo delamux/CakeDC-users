@@ -14,10 +14,11 @@ declare(strict_types=1);
 namespace CakeDC\Users\Webauthn;
 
 use Cake\Http\Exception\BadRequestException;
-use Webauthn\AuthenticationExtensions\AuthenticationExtensionsClientInputs;
+use Webauthn\AuthenticationExtensions\AuthenticationExtensions;
 use Webauthn\AuthenticatorAttestationResponse;
 use Webauthn\AuthenticatorAttestationResponseValidator;
 use Webauthn\AuthenticatorSelectionCriteria;
+use Webauthn\CredentialRecord;
 use Webauthn\PublicKeyCredentialCreationOptions;
 use Webauthn\PublicKeyCredentialDescriptor;
 use Webauthn\PublicKeyCredentialParameters;
@@ -37,11 +38,10 @@ class RegisterAdapter extends BaseAdapter
             $userEntity,
             $challenge,
             $this->getPubKeyCredParams(),
+            authenticatorSelection: AuthenticatorSelectionCriteria::create(),
+            attestation: PublicKeyCredentialCreationOptions::ATTESTATION_CONVEYANCE_PREFERENCE_NONE,
+            extensions: AuthenticationExtensions::create(),
         );
-        $options = $options
-            ->setAuthenticatorSelection(new AuthenticatorSelectionCriteria())
-            ->setAttestation(PublicKeyCredentialCreationOptions::ATTESTATION_CONVEYANCE_PREFERENCE_NONE)
-            ->setExtensions(new AuthenticationExtensionsClientInputs());
 
         $this->request->getSession()->write('Webauthn2fa.registerOptions', $options);
         $this->request->getSession()->write('Webauthn2fa.userEntity', $userEntity);
@@ -52,35 +52,31 @@ class RegisterAdapter extends BaseAdapter
     /**
      * Verify the registration response
      *
-     * @return \Webauthn\PublicKeyCredentialSource
+     * @return \Webauthn\CredentialRecord
      */
-    public function verifyResponse(): \Webauthn\PublicKeyCredentialSource
+    public function verifyResponse(): CredentialRecord
     {
         $options = $this->request->getSession()->read('Webauthn2fa.registerOptions');
-        $attestationStatementSupportManager = $this->getAttestationStatementSupportManager();
         $publicKeyCredentialLoader = $this->createPublicKeyCredentialLoader();
-
         $publicKeyCredential = $publicKeyCredentialLoader->loadArray((array)$this->request->getData());
-
-        $authenticatorAttestationResponse = $publicKeyCredential->getResponse();
-        if ($authenticatorAttestationResponse instanceof AuthenticatorAttestationResponse) {
-            $extensionOutputCheckerHandler = $this->createExtensionOutputCheckerHandler();
-            $authenticatorAttestationResponseValidator = new AuthenticatorAttestationResponseValidator(
-                $attestationStatementSupportManager,
-                $this->repository,
-                null, //Token binding is deprecated
-                $extensionOutputCheckerHandler,
+        $authenticatorAttestationResponse = $publicKeyCredential->response;
+        if (
+            $options instanceof PublicKeyCredentialCreationOptions
+            && $authenticatorAttestationResponse instanceof AuthenticatorAttestationResponse
+        ) {
+            $authenticatorAttestationResponseValidator = AuthenticatorAttestationResponseValidator::create(
+                $this->createCeremonyStepManagerFactory()->creationCeremony(),
             );
             $credential = $authenticatorAttestationResponseValidator->check(
                 $authenticatorAttestationResponse,
                 $options,
-                $this->request,
+                $this->getHost(),
             );
-
             $this->repository->saveCredentialSource($credential);
 
             return $credential;
         }
+
         throw new BadRequestException(__d('cake_d_c/users', 'Could not credential response for registration'));
     }
 
