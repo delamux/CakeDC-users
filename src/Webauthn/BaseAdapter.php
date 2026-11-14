@@ -184,4 +184,19 @@ class BaseAdapter
 
         return $this->algorithmManager;
     }
+
+    /**
+     * Relying party IDs that are allowed over plain HTTP (`Webauthn2fa.securedRelyingPartyIds`), for example
+     * `['localhost']` on a development server. Empty by default: webauthn-lib then requires the https scheme for every
+     * relying party ID. Do not use it in production.
+     *
+     * @return array<string>
+     */
+    protected function getSecuredRelyingPartyIds(): array
+    {
+        return array_values(array_filter(
+            (array)Configure::read('Webauthn2fa.securedRelyingPartyIds'),
+            fn($id) => is_string($id) && $id !== '',
+        ));
+    }
 }

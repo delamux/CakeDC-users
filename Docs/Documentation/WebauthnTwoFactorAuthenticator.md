@@ -40,6 +40,25 @@ return [
         ],
 ```
 
+Local development over HTTP
+---------------------------
+By default the server requires the `https` scheme in the origin of every
+WebAuthn request. Browsers also allow WebAuthn on `http://localhost`, so
+on a local development server you can list the relying party IDs that are
+allowed over plain HTTP:
+
+```php
+    'Webauthn2fa' => [
+        'enabled' => true,
+        'appName' => 'MyApplicationName',
+        // Development only: never list production domains here.
+        'securedRelyingPartyIds' => ['localhost'],
+    ],
+```
+
+The option is empty by default. Set it only in development, for example from
+an environment variable that only the local environment defines.
+
 Disable
 -------
 You can disable it by adding this in your config/users.php file:

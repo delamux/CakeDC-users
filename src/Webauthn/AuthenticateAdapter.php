@@ -66,12 +66,26 @@ class AuthenticateAdapter extends BaseAdapter
         if ($authenticatorAssertionResponse instanceof AuthenticatorAssertionResponse) {
             $authenticatorAssertionResponseValidator = $this->createAssertionResponseValidator();
 
+            // The list is passed only when it is configured: it is the only way supported by every
+            // web-auth/webauthn-lib ^4.4 version, and it is deprecated since 4.8.
+            $securedRelyingPartyIds = $this->getSecuredRelyingPartyIds();
+            if ($securedRelyingPartyIds === []) {
+                return $authenticatorAssertionResponseValidator->check(
+                    $publicKeyCredential->getRawId(),
+                    $authenticatorAssertionResponse,
+                    $options,
+                    $this->request,
+                    $this->getUserEntity()->getId(),
+                );
+            }
+
             return $authenticatorAssertionResponseValidator->check(
                 $publicKeyCredential->getRawId(),
                 $authenticatorAssertionResponse,
                 $options,
                 $this->request,
                 $this->getUserEntity()->getId(),
+                $securedRelyingPartyIds,
             );
         }
 

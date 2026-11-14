@@ -71,11 +71,21 @@ class RegisterAdapter extends BaseAdapter
                 null, //Token binding is deprecated
                 $extensionOutputCheckerHandler,
             );
-            $credential = $authenticatorAttestationResponseValidator->check(
-                $authenticatorAttestationResponse,
-                $options,
-                $this->request,
-            );
+            // The list is passed only when it is configured: it is the only way supported by every
+            // web-auth/webauthn-lib ^4.4 version, and it is deprecated since 4.8.
+            $securedRelyingPartyIds = $this->getSecuredRelyingPartyIds();
+            $credential = $securedRelyingPartyIds === []
+                ? $authenticatorAttestationResponseValidator->check(
+                    $authenticatorAttestationResponse,
+                    $options,
+                    $this->request,
+                )
+                : $authenticatorAttestationResponseValidator->check(
+                    $authenticatorAttestationResponse,
+                    $options,
+                    $this->request,
+                    $securedRelyingPartyIds,
+                );
 
             $this->repository->saveCredentialSource($credential);
 
