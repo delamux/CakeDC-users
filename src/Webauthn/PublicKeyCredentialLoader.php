@@ -13,12 +13,26 @@ declare(strict_types=1);
 
 namespace CakeDC\Users\Webauthn;
 
+use Symfony\Component\Serializer\SerializerInterface;
 use Webauthn\PublicKeyCredential;
 
-class PublicKeyCredentialLoader extends \Webauthn\PublicKeyCredentialLoader
+/**
+ * Loads the browser response (`PublicKeyCredential`) with the webauthn-lib 5 serializer. Before loading, it makes the
+ * base64 of `clientDataJSON` and `authenticatorData` compliant (some browsers send it with padding or in base64 instead
+ * of base64url).
+ */
+class PublicKeyCredentialLoader
 {
     /**
-     * @inheritDoc
+     * @param \Symfony\Component\Serializer\SerializerInterface $serializer Serializer of webauthn-lib.
+     */
+    public function __construct(protected SerializerInterface $serializer)
+    {
+    }
+
+    /**
+     * @param array<string, mixed> $json Response sent by the browser.
+     * @return \Webauthn\PublicKeyCredential
      */
     public function loadArray(array $json): PublicKeyCredential
     {
@@ -29,7 +43,6 @@ class PublicKeyCredentialLoader extends \Webauthn\PublicKeyCredentialLoader
             $json['response']['clientDataJSON'] =
                 Base64Utility::complyEncodedNoPadding($json['response']['clientDataJSON']);
         }
-
         if (
             isset($json['response']['authenticatorData'])
             && is_string($json['response']['authenticatorData'])
@@ -38,6 +51,10 @@ class PublicKeyCredentialLoader extends \Webauthn\PublicKeyCredentialLoader
                 Base64Utility::complyEncodedNoPadding($json['response']['authenticatorData']);
         }
 
-        return parent::loadArray($json);
+        return $this->serializer->deserialize(
+            json_encode($json, JSON_THROW_ON_ERROR),
+            PublicKeyCredential::class,
+            'json',
+        );
     }
 }
