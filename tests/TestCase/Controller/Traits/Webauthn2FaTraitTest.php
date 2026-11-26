@@ -22,7 +22,9 @@ use CakeDC\Users\Model\Entity\User;
 use CakeDC\Users\Webauthn\AuthenticateAdapter;
 use CakeDC\Users\Webauthn\Base64Utility;
 use CakeDC\Users\Webauthn\RegisterAdapter;
-use Webauthn\PublicKeyCredentialSource;
+use Webauthn\AttestationStatement\AttestationStatementSupportManager;
+use Webauthn\CredentialRecord;
+use Webauthn\Denormalizer\WebauthnSerializerFactory;
 
 /**
  * Class Webauthn2faTraitTest
@@ -281,7 +283,7 @@ class Webauthn2FaTraitTest extends BaseTrait
             'counter' => 191,
             'otherUI' => null,
         ];
-        $credential = PublicKeyCredentialSource::createFromArray($credentialData);
+        $credential = (new WebauthnSerializerFactory(new AttestationStatementSupportManager()))->create()->denormalize($credentialData, CredentialRecord::class, 'json');
         $adapter->expects($this->once())
             ->method('verifyResponse')
             ->willReturn($credential);
@@ -420,7 +422,7 @@ class Webauthn2FaTraitTest extends BaseTrait
             'counter' => 191,
             'otherUI' => null,
         ];
-        $credential = PublicKeyCredentialSource::createFromArray($credentialData);
+        $credential = (new WebauthnSerializerFactory(new AttestationStatementSupportManager()))->create()->denormalize($credentialData, CredentialRecord::class, 'json');
         $adapter->expects($this->once())
             ->method('verifyResponse')
             ->willReturn($credential);

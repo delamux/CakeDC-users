@@ -21,10 +21,14 @@ use Cose\Algorithm\Signature\RSA\PS512;
 use Cose\Algorithm\Signature\RSA\RS256;
 use Cose\Algorithm\Signature\RSA\RS384;
 use Cose\Algorithm\Signature\RSA\RS512;
-use Webauthn\AttestationStatement\AttestationObjectLoader;
+use Symfony\Component\Serializer\Encoder\JsonEncode;
+use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
+use Symfony\Component\Serializer\SerializerInterface;
 use Webauthn\AttestationStatement\AttestationStatementSupportManager;
 use Webauthn\AttestationStatement\NoneAttestationStatementSupport;
 use Webauthn\AuthenticationExtensions\ExtensionOutputCheckerHandler;
+use Webauthn\CeremonyStep\CeremonyStepManagerFactory;
+use Webauthn\Denormalizer\WebauthnSerializerFactory;
 use Webauthn\PublicKeyCredentialRpEntity;
 use Webauthn\PublicKeyCredentialUserEntity;
 
@@ -55,6 +59,10 @@ class BaseAdapter
      * @var \Cose\Algorithm\Manager
      */
     protected ?Manager $algorithmManager = null;
+    /**
+     * @var \Symfony\Component\Serializer\SerializerInterface|null
+     */
+    protected ?SerializerInterface $serializer = null;
 
     /**
      * @param \Cake\Http\ServerRequest $request The request.
@@ -63,8 +71,8 @@ class BaseAdapter
     public function __construct(ServerRequest $request, ?UsersTable $usersTable = null)
     {
         $this->request = $request;
-        $this->rpEntity = new PublicKeyCredentialRpEntity(
-            Configure::read('Webauthn2fa.appName'), // The application name
+        $this->rpEntity = PublicKeyCredentialRpEntity::create(
+            (string)Configure::read('Webauthn2fa.appName'), // The application name
             Configure::read('Webauthn2fa.id'),
         );
         /**
@@ -80,6 +88,7 @@ class BaseAdapter
         $this->repository = new UserCredentialSourceRepository(
             $this->user,
             $usersTable,
+            $this->getSerializer(),
         );
     }
 
@@ -90,8 +99,8 @@ class BaseAdapter
     {
         $user = $this->getUser();
 
-        return new PublicKeyCredentialUserEntity(
-            $user->webauthn_username ?? $user->get('username'),
+        return PublicKeyCredentialUserEntity::create(
+            (string)($user->webauthn_username ?? $user->get('username')),
             (string)$user->id,
             (string)$user->first_name,
         );
@@ -122,6 +131,7 @@ class BaseAdapter
         AttestationStatementSupportManager $attestationStatementSupportManager,
     ): void {
         $this->attestationStatementSupportManager = $attestationStatementSupportManager;
+        $this->serializer = null;
     }
 
     /**
@@ -139,17 +149,41 @@ class BaseAdapter
     }
 
     /**
+     * Serializer of webauthn-lib (`WebauthnSerializerFactory`), used to load the browser responses, to send the
+     * options to the browser and to store the credential records.
+     *
+     * @return \Symfony\Component\Serializer\SerializerInterface
+     */
+    public function getSerializer(): SerializerInterface
+    {
+        if ($this->serializer === null) {
+            $this->serializer = (new WebauthnSerializerFactory($this->getAttestationStatementSupportManager()))
+                ->create();
+        }
+
+        return $this->serializer;
+    }
+
+    /**
+     * JSON for the browser (registration or authentication options), without null values.
+     *
+     * @param object $value WebAuthn object, for example the options returned by getOptions().
+     * @return string
+     */
+    public function toJson(object $value): string
+    {
+        return $this->getSerializer()->serialize($value, 'json', [
+            AbstractObjectNormalizer::SKIP_NULL_VALUES => true,
+            JsonEncode::OPTIONS => JSON_THROW_ON_ERROR,
+        ]);
+    }
+
+    /**
      * @return \CakeDC\Users\Webauthn\PublicKeyCredentialLoader
      */
     protected function createPublicKeyCredentialLoader(): PublicKeyCredentialLoader
     {
-        $attestationObjectLoader = new AttestationObjectLoader(
-            $this->getAttestationStatementSupportManager(),
-        );
-
-        return new PublicKeyCredentialLoader(
-            $attestationObjectLoader,
-        );
+        return new PublicKeyCredentialLoader($this->getSerializer());
     }
 
     /**
@@ -157,7 +191,33 @@ class BaseAdapter
      */
     protected function createExtensionOutputCheckerHandler(): ExtensionOutputCheckerHandler
     {
-        return new ExtensionOutputCheckerHandler();
+        return ExtensionOutputCheckerHandler::create();
+    }
+
+    /**
+     * Ceremony steps of webauthn-lib 5 with the algorithms, attestation statement support and extension checker of
+     * this adapter.
+     *
+     * @return \Webauthn\CeremonyStep\CeremonyStepManagerFactory
+     */
+    protected function createCeremonyStepManagerFactory(): CeremonyStepManagerFactory
+    {
+        $factory = new CeremonyStepManagerFactory();
+        $factory->setAlgorithmManager($this->getAlgorithmManager());
+        $factory->setAttestationStatementSupportManager($this->getAttestationStatementSupportManager());
+        $factory->setExtensionOutputCheckerHandler($this->createExtensionOutputCheckerHandler());
+
+        return $factory;
+    }
+
+    /**
+     * Host of the current request, checked against the relying party ID by the ceremonies.
+     *
+     * @return string
+     */
+    protected function getHost(): string
+    {
+        return $this->request->getUri()->getHost();
     }
 
     /**
